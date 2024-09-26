@@ -20,12 +20,15 @@ func main() {
     // Public routes
     r.HandleFunc("/login", handlers.Login).Methods("POST")
 
-    // Protected routes
-    r.HandleFunc("/playlisters", middleware.AuthMiddleware(handlers.GetPlaylisters)).Methods("GET")
-    r.HandleFunc("/playlisters", middleware.AuthMiddleware(handlers.CreatePlaylister)).Methods("POST")
-    r.HandleFunc("/playlisters/{id}", middleware.AuthMiddleware(handlers.GetPlaylister)).Methods("GET")
-    r.HandleFunc("/playlisters/{id}", middleware.AuthMiddleware(handlers.UpdatePlaylister)).Methods("PUT")
-    r.HandleFunc("/playlisters/{id}", middleware.AuthMiddleware(handlers.DeletePlaylister)).Methods("DELETE")
+	// Protected routes
+	r.HandleFunc("/playlisters", middleware.RateLimitMiddleware(middleware.AuthMiddleware(handlers.GetPlaylisters))).Methods("GET")
+	r.HandleFunc("/playlisters", middleware.RateLimitMiddleware(middleware.AuthMiddleware(handlers.CreatePlaylister))).Methods("POST")
+	r.HandleFunc("/playlisters/{id}", middleware.RateLimitMiddleware(middleware.AuthMiddleware(handlers.GetPlaylister))).Methods("GET")
+	r.HandleFunc("/playlisters/{id}", middleware.RateLimitMiddleware(middleware.AuthMiddleware(handlers.UpdatePlaylister))).Methods("PUT")
+	r.HandleFunc("/playlisters/{id}", middleware.RateLimitMiddleware(middleware.AuthMiddleware(handlers.DeletePlaylister))).Methods("DELETE")
+
+	// Start the cleanup goroutine
+	go middleware.CleanupVisitors()
 
     log.Println("Starting server on :8000")
     log.Fatal(http.ListenAndServe(":8000", r))
