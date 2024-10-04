@@ -10,6 +10,7 @@ import (
     "github.com/alanowatson/LeadGenAPI/internal/models"
     "github.com/alanowatson/LeadGenAPI/pkg/util"
     "github.com/alanowatson/LeadGenAPI/internal/validation"
+    "github.com/alanowatson/LeadGenAPI/internal/errors"
 
 )
 
@@ -35,13 +36,13 @@ func CreatePlaylister(w http.ResponseWriter, r *http.Request) {
     var playlister models.Playlister
     decoder := json.NewDecoder(r.Body)
     if err := decoder.Decode(&playlister); err != nil {
-        util.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
+        errors.HandleError(w, err, http.StatusBadRequest, "Invalid request payload")
         return
     }
     defer r.Body.Close()
 
     if err := validation.ValidateStruct(playlister); err != nil {
-        util.RespondWithError(w, http.StatusBadRequest, err.Error())
+        errors.HandleError(w, err, http.StatusBadRequest, "Validation error")
         return
     }
 
@@ -78,17 +79,23 @@ func UpdatePlaylister(w http.ResponseWriter, r *http.Request) {
     vars := mux.Vars(r)
     id, err := strconv.Atoi(vars["id"])
     if err != nil {
-        util.RespondWithError(w, http.StatusBadRequest, "Invalid playlister ID")
+        errors.HandleError(w, err, http.StatusBadRequest, "Invalid playlister ID")
         return
     }
 
     var playlister models.Playlister
     decoder := json.NewDecoder(r.Body)
     if err := decoder.Decode(&playlister); err != nil {
-        util.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
+        errors.HandleError(w, err, http.StatusBadRequest, "Invalid request payload")
         return
     }
     defer r.Body.Close()
+
+    // Validate the updated playlister data
+    if err := validation.ValidateStruct(playlister); err != nil {
+        errors.HandleError(w, err, http.StatusBadRequest, "Validation error")
+        return
+    }
 
     playlisterMutex.Lock()
     defer playlisterMutex.Unlock()
@@ -103,7 +110,6 @@ func UpdatePlaylister(w http.ResponseWriter, r *http.Request) {
 
     util.RespondWithJSON(w, http.StatusOK, playlister)
 }
-
 func DeletePlaylister(w http.ResponseWriter, r *http.Request) {
     vars := mux.Vars(r)
     id, err := strconv.Atoi(vars["id"])

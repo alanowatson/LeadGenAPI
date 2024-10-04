@@ -1,17 +1,17 @@
 package handlers
 
 import (
-    "encoding/json"
-    "fmt"
-    "net/http"
-    "strconv"
-    "sync"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strconv"
+	"sync"
 
-    "github.com/gorilla/mux"
-    "github.com/alanowatson/LeadGenAPI/internal/models"
-    "github.com/alanowatson/LeadGenAPI/pkg/util"
-    "github.com/alanowatson/LeadGenAPI/internal/validation"
-
+	"github.com/alanowatson/LeadGenAPI/internal/errors"
+	"github.com/alanowatson/LeadGenAPI/internal/models"
+	"github.com/alanowatson/LeadGenAPI/internal/validation"
+	"github.com/alanowatson/LeadGenAPI/pkg/util"
+	"github.com/gorilla/mux"
 )
 
 var (
@@ -54,13 +54,23 @@ func CreatePlaylistCampaign(w http.ResponseWriter, r *http.Request) {
     var pc models.PlaylistCampaign
     decoder := json.NewDecoder(r.Body)
     if err := decoder.Decode(&pc); err != nil {
-        util.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
+        errors.HandleError(w, err, http.StatusBadRequest, "Invalid request payload")
         return
     }
     defer r.Body.Close()
 
-        if err := validation.ValidateStruct(pc); err != nil {
-        util.RespondWithError(w, http.StatusBadRequest, err.Error())
+    if err := validation.ValidateStruct(pc); err != nil {
+        errors.HandleError(w, err, http.StatusBadRequest, "Validation error")
+        return
+    }
+
+    // Additional validation to check if referenced Playlist and Campaign exist
+    if _, exists := playlists[pc.PlaylistID]; !exists {
+        util.RespondWithError(w, http.StatusBadRequest, "Referenced Playlist does not exist")
+        return
+    }
+    if _, exists := campaigns[pc.CampaignID]; !exists {
+        util.RespondWithError(w, http.StatusBadRequest, "Referenced Campaign does not exist")
         return
     }
 
@@ -83,10 +93,15 @@ func UpdatePlaylistCampaign(w http.ResponseWriter, r *http.Request) {
     var pc models.PlaylistCampaign
     decoder := json.NewDecoder(r.Body)
     if err := decoder.Decode(&pc); err != nil {
-        util.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
+        errors.HandleError(w, err, http.StatusBadRequest, "Invalid request payload")
         return
     }
     defer r.Body.Close()
+
+    if err := validation.ValidateStruct(pc); err != nil {
+        errors.HandleError(w, err, http.StatusBadRequest, "Validation error")
+        return
+    }
 
     playlistCampaignMutex.Lock()
     defer playlistCampaignMutex.Unlock()
@@ -96,8 +111,12 @@ func UpdatePlaylistCampaign(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    pc.PlaylistID = playlistID
-    pc.CampaignID = campaignID
+    // Ensure the IDs in the URL match the IDs in the payload
+    if pc.PlaylistID != playlistID || pc.CampaignID != campaignID {
+        util.RespondWithError(w, http.StatusBadRequest, "Playlist ID and Campaign ID in URL must match payload")
+        return
+    }
+
     playlistCampaigns[key] = pc
 
     util.RespondWithJSON(w, http.StatusOK, pc)

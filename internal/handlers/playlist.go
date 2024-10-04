@@ -1,15 +1,16 @@
 package handlers
 
 import (
-    "encoding/json"
-    "net/http"
-    "strconv"
-    "sync"
+	"encoding/json"
+	"net/http"
+	"strconv"
+	"sync"
 
-    "github.com/gorilla/mux"
-    "github.com/alanowatson/LeadGenAPI/internal/models"
-    "github.com/alanowatson/LeadGenAPI/internal/validation"
-    "github.com/alanowatson/LeadGenAPI/pkg/util"
+	"github.com/alanowatson/LeadGenAPI/internal/errors"
+	"github.com/alanowatson/LeadGenAPI/internal/models"
+	"github.com/alanowatson/LeadGenAPI/internal/validation"
+	"github.com/alanowatson/LeadGenAPI/pkg/util"
+	"github.com/gorilla/mux"
 )
 
 var (
@@ -54,13 +55,13 @@ func CreatePlaylist(w http.ResponseWriter, r *http.Request) {
     var playlist models.Playlist
     decoder := json.NewDecoder(r.Body)
     if err := decoder.Decode(&playlist); err != nil {
-        util.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
+        errors.HandleError(w, err, http.StatusBadRequest, "Invalid request payload")
         return
     }
     defer r.Body.Close()
 
     if err := validation.ValidateStruct(playlist); err != nil {
-        util.RespondWithError(w, http.StatusBadRequest, err.Error())
+        errors.HandleError(w, err, http.StatusBadRequest, "Validation error")
         return
     }
 
@@ -77,17 +78,22 @@ func UpdatePlaylist(w http.ResponseWriter, r *http.Request) {
     vars := mux.Vars(r)
     id, err := strconv.Atoi(vars["id"])
     if err != nil {
-        util.RespondWithError(w, http.StatusBadRequest, "Invalid playlist ID")
+        errors.HandleError(w, err, http.StatusBadRequest, "Invalid playlist ID")
         return
     }
 
     var playlist models.Playlist
     decoder := json.NewDecoder(r.Body)
     if err := decoder.Decode(&playlist); err != nil {
-        util.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
+        errors.HandleError(w, err, http.StatusBadRequest, "Invalid request payload")
         return
     }
     defer r.Body.Close()
+
+    if err := validation.ValidateStruct(playlist); err != nil {
+        errors.HandleError(w, err, http.StatusBadRequest, "Validation error")
+        return
+    }
 
     playlistMutex.Lock()
     defer playlistMutex.Unlock()
