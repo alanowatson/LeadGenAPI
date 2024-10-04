@@ -9,6 +9,8 @@ import (
     "github.com/gorilla/mux"
     "github.com/alanowatson/LeadGenAPI/internal/models"
     "github.com/alanowatson/LeadGenAPI/pkg/util"
+    "github.com/alanowatson/LeadGenAPI/internal/validation"
+
 )
 
 var (
@@ -57,6 +59,11 @@ func CreateCampaign(w http.ResponseWriter, r *http.Request) {
         return
     }
     defer r.Body.Close()
+
+    if err := validation.ValidateStruct(campaign); err != nil {
+        util.RespondWithError(w, http.StatusBadRequest, err.Error())
+        return
+    }
 
     campaignMutex.Lock()
     campaign.ID = campaignID

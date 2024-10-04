@@ -10,6 +10,8 @@ import (
     "github.com/gorilla/mux"
     "github.com/alanowatson/LeadGenAPI/internal/models"
     "github.com/alanowatson/LeadGenAPI/pkg/util"
+    "github.com/alanowatson/LeadGenAPI/internal/validation"
+
 )
 
 var (
@@ -56,6 +58,11 @@ func CreatePlaylistCampaign(w http.ResponseWriter, r *http.Request) {
         return
     }
     defer r.Body.Close()
+
+        if err := validation.ValidateStruct(pc); err != nil {
+        util.RespondWithError(w, http.StatusBadRequest, err.Error())
+        return
+    }
 
     key := fmt.Sprintf("%d_%d", pc.PlaylistID, pc.CampaignID)
 

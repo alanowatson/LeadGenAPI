@@ -9,6 +9,8 @@ import (
     "github.com/gorilla/mux"
     "github.com/alanowatson/LeadGenAPI/internal/models"
     "github.com/alanowatson/LeadGenAPI/pkg/util"
+    "github.com/alanowatson/LeadGenAPI/internal/validation"
+
 )
 
 var (
@@ -38,12 +40,16 @@ func CreatePlaylister(w http.ResponseWriter, r *http.Request) {
     }
     defer r.Body.Close()
 
-    playlisterMutex.Lock()
-    defer playlisterMutex.Unlock()
+    if err := validation.ValidateStruct(playlister); err != nil {
+        util.RespondWithError(w, http.StatusBadRequest, err.Error())
+        return
+    }
 
+    playlisterMutex.Lock()
     playlister.ID = playlisterID
     playlisters[playlisterID] = playlister
     playlisterID++
+    playlisterMutex.Unlock()
 
     util.RespondWithJSON(w, http.StatusCreated, playlister)
 }
