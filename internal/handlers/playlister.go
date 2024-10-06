@@ -11,6 +11,7 @@ import (
     "github.com/alanowatson/LeadGenAPI/pkg/util"
     "github.com/alanowatson/LeadGenAPI/internal/validation"
     "github.com/alanowatson/LeadGenAPI/internal/errors"
+    "github.com/alanowatson/LeadGenAPI/internal/pagination"
 
 )
 
@@ -21,15 +22,27 @@ var (
 )
 
 func GetPlaylisters(w http.ResponseWriter, r *http.Request) {
+    paginationParams := pagination.GetPaginationParams(r)
+
     playlisterMutex.RLock()
     defer playlisterMutex.RUnlock()
 
-    playlisterList := make([]models.Playlister, 0, len(playlisters))
+    playlisterList := make([]interface{}, 0, len(playlisters))
     for _, playlister := range playlisters {
         playlisterList = append(playlisterList, playlister)
     }
 
-    util.RespondWithJSON(w, http.StatusOK, playlisterList)
+    paginatedList := pagination.PaginateSlice(playlisterList, paginationParams)
+
+    response := map[string]interface{}{
+        "data":       paginatedList,
+        "page":       paginationParams.Page,
+        "per_page":   paginationParams.PerPage,
+        "total_items": len(playlisterList),
+        "total_pages": (len(playlisterList) + paginationParams.PerPage - 1) / paginationParams.PerPage,
+    }
+
+    util.RespondWithJSON(w, http.StatusOK, response)
 }
 
 func CreatePlaylister(w http.ResponseWriter, r *http.Request) {

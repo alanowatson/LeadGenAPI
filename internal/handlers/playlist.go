@@ -11,6 +11,8 @@ import (
 	"github.com/alanowatson/LeadGenAPI/internal/validation"
 	"github.com/alanowatson/LeadGenAPI/pkg/util"
 	"github.com/gorilla/mux"
+    "github.com/alanowatson/LeadGenAPI/internal/pagination"
+
 )
 
 var (
@@ -20,6 +22,8 @@ var (
 )
 
 func GetPlaylists(w http.ResponseWriter, r *http.Request) {
+    paginationParams := pagination.GetPaginationParams(r)
+
     playlistMutex.RLock()
     defer playlistMutex.RUnlock()
 
@@ -28,7 +32,31 @@ func GetPlaylists(w http.ResponseWriter, r *http.Request) {
         playlistList = append(playlistList, playlist)
     }
 
-    util.RespondWithJSON(w, http.StatusOK, playlistList)
+    totalItems := len(playlistList)
+    totalPages := (totalItems + paginationParams.PerPage - 1) / paginationParams.PerPage
+
+    if paginationParams.Page > totalPages {
+        util.RespondWithError(w, http.StatusNotFound, "Page not found")
+        return
+    }
+
+    start := (paginationParams.Page - 1) * paginationParams.PerPage
+    end := start + paginationParams.PerPage
+    if end > totalItems {
+        end = totalItems
+    }
+
+    paginatedList := playlistList[start:end]
+
+    response := map[string]interface{}{
+        "data":        paginatedList,
+        "page":        paginationParams.Page,
+        "per_page":    paginationParams.PerPage,
+        "total_items": totalItems,
+        "total_pages": totalPages,
+    }
+
+    util.RespondWithJSON(w, http.StatusOK, response)
 }
 
 func GetPlaylist(w http.ResponseWriter, r *http.Request) {

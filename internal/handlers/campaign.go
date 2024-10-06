@@ -9,6 +9,7 @@ import (
 	"github.com/alanowatson/LeadGenAPI/internal/errors"
 	"github.com/alanowatson/LeadGenAPI/internal/models"
 	"github.com/alanowatson/LeadGenAPI/internal/validation"
+    "github.com/alanowatson/LeadGenAPI/internal/pagination"
 	"github.com/alanowatson/LeadGenAPI/pkg/util"
 	"github.com/gorilla/mux"
 )
@@ -20,6 +21,8 @@ var (
 )
 
 func GetCampaigns(w http.ResponseWriter, r *http.Request) {
+    paginationParams := pagination.GetPaginationParams(r)
+
     campaignMutex.RLock()
     defer campaignMutex.RUnlock()
 
@@ -28,7 +31,31 @@ func GetCampaigns(w http.ResponseWriter, r *http.Request) {
         campaignList = append(campaignList, campaign)
     }
 
-    util.RespondWithJSON(w, http.StatusOK, campaignList)
+    totalItems := len(campaignList)
+    totalPages := (totalItems + paginationParams.PerPage - 1) / paginationParams.PerPage
+
+    if paginationParams.Page > totalPages {
+        util.RespondWithError(w, http.StatusNotFound, "Page not found")
+        return
+    }
+
+    start := (paginationParams.Page - 1) * paginationParams.PerPage
+    end := start + paginationParams.PerPage
+    if end > totalItems {
+        end = totalItems
+    }
+
+    paginatedList := campaignList[start:end]
+
+    response := map[string]interface{}{
+        "data":        paginatedList,
+        "page":        paginationParams.Page,
+        "per_page":    paginationParams.PerPage,
+        "total_items": totalItems,
+        "total_pages": totalPages,
+    }
+
+    util.RespondWithJSON(w, http.StatusOK, response)
 }
 
 func GetCampaign(w http.ResponseWriter, r *http.Request) {
