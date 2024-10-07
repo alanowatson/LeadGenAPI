@@ -1,11 +1,12 @@
 package db
 
 import (
-    "database/sql"
-		"os"
-    "fmt"
+	"database/sql"
+	"fmt"
+	"os"
 
-    _ "github.com/lib/pq" // PostgreSQL driver
+	"github.com/alanowatson/LeadGenAPI/internal/models"
+	_ "github.com/lib/pq"
 )
 
 var DB *sql.DB
@@ -56,7 +57,7 @@ func CampaignExists(id int) (bool, error) {
     return exists, nil
 }
 
-func CreatePlaylistCampaignTx(tx *sql.Tx, pc PlaylistCampaign) error {
+func CreatePlaylistCampaignTx(tx *sql.Tx, pc models.PlaylistCampaign) error {
     _, err := tx.Exec(`
         INSERT INTO playlist_campaigns (playlist_id, campaign_id, playlister_id, reference_artists, placement_status, number_of_messages, purchased)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
