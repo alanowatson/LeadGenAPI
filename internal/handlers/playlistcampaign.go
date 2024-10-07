@@ -13,6 +13,7 @@ import (
 	"github.com/alanowatson/LeadGenAPI/pkg/util"
 	"github.com/gorilla/mux"
     "github.com/alanowatson/LeadGenAPI/internal/pagination"
+    "github.com/alanowatson/LeadGenAPI/internal/db"
 
 )
 
@@ -20,6 +21,9 @@ var (
     playlistCampaigns     = make(map[string]models.PlaylistCampaign)
     playlistCampaignMutex sync.RWMutex
 )
+
+const MaxAllowedMessages = 3
+
 
 func GetPlaylistCampaigns(w http.ResponseWriter, r *http.Request) {
     paginationParams := pagination.GetPaginationParams(r)
@@ -82,31 +86,57 @@ func CreatePlaylistCampaign(w http.ResponseWriter, r *http.Request) {
     var pc models.PlaylistCampaign
     decoder := json.NewDecoder(r.Body)
     if err := decoder.Decode(&pc); err != nil {
-        errors.HandleError(w, err, http.StatusBadRequest, "Invalid request payload")
+        util.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
         return
     }
     defer r.Body.Close()
 
     if err := validation.ValidateStruct(pc); err != nil {
-        errors.HandleError(w, err, http.StatusBadRequest, "Validation error")
+        util.RespondWithError(w, http.StatusBadRequest, "Validation error: " + err.Error())
         return
     }
 
-    // Additional validation to check if referenced Playlist and Campaign exist
-    if _, exists := playlists[pc.PlaylistID]; !exists {
+    if pc.NumberOfMessages > MaxAllowedMessages {
+        util.RespondWithError(w, http.StatusBadRequest, "Exceeds maximum allowed messages")
+        return
+    }
+
+    playlistExists, err := db.PlaylistExists(pc.PlaylistID)
+    if err != nil {
+        util.RespondWithError(w, http.StatusInternalServerError, "Error checking playlist existence")
+        return
+    }
+    if !playlistExists {
         util.RespondWithError(w, http.StatusBadRequest, "Referenced Playlist does not exist")
         return
     }
-    if _, exists := campaigns[pc.CampaignID]; !exists {
+
+    campaignExists, err := db.CampaignExists(pc.CampaignID)
+    if err != nil {
+        util.RespondWithError(w, http.StatusInternalServerError, "Error checking campaign existence")
+        return
+    }
+    if !campaignExists {
         util.RespondWithError(w, http.StatusBadRequest, "Referenced Campaign does not exist")
         return
     }
 
-    key := fmt.Sprintf("%d_%d", pc.PlaylistID, pc.CampaignID)
+    tx, err := db.BeginTx()
+    if err != nil {
+        util.RespondWithError(w, http.StatusInternalServerError, "Error starting transaction")
+        return
+    }
+    defer tx.Rollback()
 
-    playlistCampaignMutex.Lock()
-    playlistCampaigns[key] = pc
-    playlistCampaignMutex.Unlock()
+    if err := db.CreatePlaylistCampaignTx(tx, pc); err != nil {
+        util.RespondWithError(w, http.StatusInternalServerError, "Error creating PlaylistCampaign")
+        return
+    }
+
+    if err := tx.Commit(); err != nil {
+        util.RespondWithError(w, http.StatusInternalServerError, "Error committing transaction")
+        return
+    }
 
     util.RespondWithJSON(w, http.StatusCreated, pc)
 }

@@ -1,19 +1,25 @@
 package main
 
 import (
-	"log"
-	"net/http"
+    "log"
+    "net/http"
 
-	"github.com/alanowatson/LeadGenAPI/internal/handlers"
-	"github.com/alanowatson/LeadGenAPI/internal/middleware"
-	"github.com/gorilla/mux"
-	"github.com/joho/godotenv"
+    "github.com/alanowatson/LeadGenAPI/internal/handlers"
+    "github.com/alanowatson/LeadGenAPI/internal/middleware"
+    "github.com/alanowatson/LeadGenAPI/internal/db"
+    "github.com/gorilla/mux"
+    "github.com/joho/godotenv"
 )
 
 func main() {
     err := godotenv.Load()
     if err != nil {
         log.Fatal("Error loading .env file")
+    }
+
+
+    if err := db.InitDB(); err != nil {
+        log.Fatalf("Error initializing database: %v", err)
     }
 
     r := mux.NewRouter()
