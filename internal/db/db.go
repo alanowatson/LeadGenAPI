@@ -1,9 +1,11 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/alanowatson/LeadGenAPI/internal/models"
 	_ "github.com/lib/pq"
@@ -16,11 +18,11 @@ func InitDB() error {
     dbName := os.Getenv("DB_NAME")
     dbPassword := os.Getenv("DB_PASSWORD")
     dbHost := os.Getenv("DB_HOST")
+    dbPort := os.Getenv("DB_PORT")
     dbSSLMode := os.Getenv("DB_SSLMODE")
 
-    connStr := fmt.Sprintf("user=%s dbname=%s password=%s host=%s sslmode=%s",
-        dbUser, dbName, dbPassword, dbHost, dbSSLMode)
-
+    connStr := fmt.Sprintf("user=%s dbname=%s password=%s host=%s port=%s sslmode=%s",
+        dbUser, dbName, dbPassword, dbHost, dbPort, dbSSLMode)
 
     var err error
     DB, err = sql.Open("postgres", connStr)
@@ -28,8 +30,11 @@ func InitDB() error {
         return fmt.Errorf("error opening database: %w", err)
     }
 
-    if err = DB.Ping(); err != nil {
-        return fmt.Errorf("error connecting to database: %w", err)
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    if err = DB.PingContext(ctx); err != nil {
+        return fmt.Errorf("error connecting to database: %w (connection string: %s)", err, connStr)
     }
 
     return nil
