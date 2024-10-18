@@ -41,7 +41,7 @@ func GetPlaylisters(w http.ResponseWriter, r *http.Request) {
 
     // Query to get paginated results
     offset := (paginationParams.Page - 1) * paginationParams.PerPage
-    rows, err := db.DB.Query("SELECT id, spotify_user_id, curator_full_name, email FROM playlisters ORDER BY id LIMIT $1 OFFSET $2",
+    rows, err := db.DB.Query("SELECT playlisterid, spotifyuserid, curatorfullname, email FROM playlisters ORDER BY playlisterid LIMIT $1 OFFSET $2",
         paginationParams.PerPage, offset)
     if err != nil {
         log.Printf("Error querying playlisters: %v", err)
