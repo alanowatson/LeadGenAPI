@@ -1,18 +1,19 @@
 package handlers
 
 import (
-    "encoding/json"
-    "net/http"
-    "strconv"
-    "sync"
+	"encoding/json"
+	"log"
+	"net/http"
+	"strconv"
+	"sync"
 
-    "github.com/gorilla/mux"
-    "github.com/alanowatson/LeadGenAPI/internal/models"
-    "github.com/alanowatson/LeadGenAPI/pkg/util"
-    "github.com/alanowatson/LeadGenAPI/internal/validation"
-    "github.com/alanowatson/LeadGenAPI/internal/errors"
-    "github.com/alanowatson/LeadGenAPI/internal/pagination"
-
+	"github.com/alanowatson/LeadGenAPI/internal/db"
+	"github.com/alanowatson/LeadGenAPI/internal/errors"
+	"github.com/alanowatson/LeadGenAPI/internal/models"
+	"github.com/alanowatson/LeadGenAPI/internal/pagination"
+	"github.com/alanowatson/LeadGenAPI/internal/validation"
+	"github.com/alanowatson/LeadGenAPI/pkg/util"
+	"github.com/gorilla/mux"
 )
 
 var (
@@ -22,26 +23,60 @@ var (
 )
 
 func GetPlaylisters(w http.ResponseWriter, r *http.Request) {
+    log.Println("GetPlaylisters function called")
+
     paginationParams := pagination.GetPaginationParams(r)
 
-    playlisterMutex.RLock()
-    defer playlisterMutex.RUnlock()
+    var playlisters []models.Playlister
+    var totalItems int
 
-    playlisterList := make([]interface{}, 0, len(playlisters))
-    for _, playlister := range playlisters {
-        playlisterList = append(playlisterList, playlister)
+    // Query to get total count
+    err := db.DB.QueryRow("SELECT COUNT(*) FROM playlisters").Scan(&totalItems)
+    if err != nil {
+        log.Printf("Error getting total count: %v", err)
+        util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlisters")
+        return
+    }
+    log.Printf("Total playlisters in database: %d", totalItems)
+
+    // Query to get paginated results
+    offset := (paginationParams.Page - 1) * paginationParams.PerPage
+    rows, err := db.DB.Query("SELECT id, spotify_user_id, curator_full_name, email FROM playlisters ORDER BY id LIMIT $1 OFFSET $2",
+        paginationParams.PerPage, offset)
+    if err != nil {
+        log.Printf("Error querying playlisters: %v", err)
+        util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlisters")
+        return
+    }
+    defer rows.Close()
+
+    for rows.Next() {
+        var p models.Playlister
+        if err := rows.Scan(&p.ID, &p.SpotifyUserID, &p.CuratorFullName, &p.Email); err != nil {
+            log.Printf("Error scanning playlister row: %v", err)
+            util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlisters")
+            return
+        }
+        playlisters = append(playlisters, p)
     }
 
-    paginatedList := pagination.PaginateSlice(playlisterList, paginationParams)
+    if err = rows.Err(); err != nil {
+        log.Printf("Error after scanning all rows: %v", err)
+        util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlisters")
+        return
+    }
+
+    totalPages := (totalItems + paginationParams.PerPage - 1) / paginationParams.PerPage
 
     response := map[string]interface{}{
-        "data":       paginatedList,
-        "page":       paginationParams.Page,
-        "per_page":   paginationParams.PerPage,
-        "total_items": len(playlisterList),
-        "total_pages": (len(playlisterList) + paginationParams.PerPage - 1) / paginationParams.PerPage,
+        "data":        playlisters,
+        "page":        paginationParams.Page,
+        "per_page":    paginationParams.PerPage,
+        "total_items": totalItems,
+        "total_pages": totalPages,
     }
 
+    log.Printf("Responding with %d playlisters", len(playlisters))
     util.RespondWithJSON(w, http.StatusOK, response)
 }
 
