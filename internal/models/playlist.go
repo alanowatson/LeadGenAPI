@@ -1,7 +1,7 @@
 package models
 
 type Playlist struct {
-    ID                   int    `json:"id"`
+    ID                   int    `json:"playlistid"`
     PlaylisterId         int    `json:"playlisterid" validate:"required,min=1"`
     PlaylistSpotifyId    string `json:"playlistspotifyid" validate:"required,min=10,max=100"`
     NumberOfFollowers    int    `json:"numberoffollowers" validate:"min=0"`
