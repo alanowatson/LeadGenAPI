@@ -3,18 +3,18 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"sync"
 
+	"github.com/alanowatson/LeadGenAPI/internal/db"
 	"github.com/alanowatson/LeadGenAPI/internal/errors"
 	"github.com/alanowatson/LeadGenAPI/internal/models"
+	"github.com/alanowatson/LeadGenAPI/internal/pagination"
 	"github.com/alanowatson/LeadGenAPI/internal/validation"
 	"github.com/alanowatson/LeadGenAPI/pkg/util"
 	"github.com/gorilla/mux"
-    "github.com/alanowatson/LeadGenAPI/internal/pagination"
-    "github.com/alanowatson/LeadGenAPI/internal/db"
-
 )
 
 var (
@@ -26,41 +26,85 @@ const MaxAllowedMessages = 3
 
 
 func GetPlaylistCampaigns(w http.ResponseWriter, r *http.Request) {
+    log.Println("GetPlaylistCampaigns function called")
+
     paginationParams := pagination.GetPaginationParams(r)
+    log.Printf("Pagination params: page=%d, per_page=%d", paginationParams.Page, paginationParams.PerPage)
 
-    playlistCampaignMutex.RLock()
-    defer playlistCampaignMutex.RUnlock()
-
-    playlistCampaignList := make([]models.PlaylistCampaign, 0, len(playlistCampaigns))
-    for _, pc := range playlistCampaigns {
-        playlistCampaignList = append(playlistCampaignList, pc)
+    var totalItems int
+    err := db.DB.QueryRow("SELECT COUNT(*) FROM playlistcampaigns").Scan(&totalItems)
+    if err != nil {
+        log.Printf("Error getting total count: %v", err)
+        util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlist campaigns")
+        return
     }
+    log.Printf("Total playlist campaigns in database: %d", totalItems)
 
-    totalItems := len(playlistCampaignList)
     totalPages := (totalItems + paginationParams.PerPage - 1) / paginationParams.PerPage
+    log.Printf("Total pages: %d", totalPages)
 
-    if paginationParams.Page > totalPages {
+    if paginationParams.Page > totalPages && totalPages > 0 {
+        log.Printf("Requested page %d exceeds total pages %d", paginationParams.Page, totalPages)
         util.RespondWithError(w, http.StatusNotFound, "Page not found")
         return
     }
 
-    start := (paginationParams.Page - 1) * paginationParams.PerPage
-    end := start + paginationParams.PerPage
-    if end > totalItems {
-        end = totalItems
+    offset := (paginationParams.Page - 1) * paginationParams.PerPage
+
+    query := `
+        SELECT playlistid, campaignid, playlisterid, referenceartists, placementstatus, numberofmessages, purchased
+        FROM playlistcampaigns
+        ORDER BY playlistid, campaignid
+        LIMIT $1 OFFSET $2
+    `
+    log.Printf("Executing query: %s", query)
+    rows, err := db.DB.Query(query, paginationParams.PerPage, offset)
+    if err != nil {
+        log.Printf("Error querying playlist campaigns: %v", err)
+        util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlist campaigns")
+        return
+    }
+    defer rows.Close()
+
+    var playlistCampaigns []models.PlaylistCampaign
+    for rows.Next() {
+        var pc models.PlaylistCampaign
+        err := rows.Scan(
+            &pc.PlaylistID,
+            &pc.CampaignID,
+            &pc.PlaylisterId,
+            &pc.ReferenceArtists,
+            &pc.PlacementStatus,
+            &pc.NumberOfMessages,
+            &pc.Purchased,
+        )
+        if err != nil {
+            log.Printf("Error scanning playlist campaign row: %v", err)
+            util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlist campaigns")
+            return
+        }
+        playlistCampaigns = append(playlistCampaigns, pc)
     }
 
-    paginatedList := playlistCampaignList[start:end]
+    if err = rows.Err(); err != nil {
+        log.Printf("Error after scanning all rows: %v", err)
+        util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlist campaigns")
+        return
+    }
+
+    log.Printf("Number of playlist campaigns retrieved: %d", len(playlistCampaigns))
 
     response := map[string]interface{}{
-        "data":        paginatedList,
+        "data":        playlistCampaigns,
         "page":        paginationParams.Page,
         "per_page":    paginationParams.PerPage,
         "total_items": totalItems,
         "total_pages": totalPages,
     }
 
+    log.Printf("Response prepared with %d items", len(playlistCampaigns))
     util.RespondWithJSON(w, http.StatusOK, response)
+    log.Println("GetPlaylistCampaigns function completed")
 }
 
 func GetPlaylistCampaign(w http.ResponseWriter, r *http.Request) {
