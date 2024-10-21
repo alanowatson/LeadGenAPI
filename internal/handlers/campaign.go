@@ -2,14 +2,17 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"sync"
 
+	"github.com/alanowatson/LeadGenAPI/internal/db"
 	"github.com/alanowatson/LeadGenAPI/internal/errors"
 	"github.com/alanowatson/LeadGenAPI/internal/models"
+	"github.com/alanowatson/LeadGenAPI/internal/pagination"
 	"github.com/alanowatson/LeadGenAPI/internal/validation"
-    "github.com/alanowatson/LeadGenAPI/internal/pagination"
+
 	"github.com/alanowatson/LeadGenAPI/pkg/util"
 	"github.com/gorilla/mux"
 )
@@ -21,41 +24,85 @@ var (
 )
 
 func GetCampaigns(w http.ResponseWriter, r *http.Request) {
+    log.Println("GetCampaigns function called")
+
     paginationParams := pagination.GetPaginationParams(r)
+    log.Printf("Pagination params: page=%d, per_page=%d", paginationParams.Page, paginationParams.PerPage)
 
-    campaignMutex.RLock()
-    defer campaignMutex.RUnlock()
-
-    campaignList := make([]models.Campaign, 0, len(campaigns))
-    for _, campaign := range campaigns {
-        campaignList = append(campaignList, campaign)
+    var totalItems int
+    err := db.DB.QueryRow("SELECT COUNT(*) FROM campaigns").Scan(&totalItems)
+    if err != nil {
+        log.Printf("Error getting total count: %v", err)
+        util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving campaigns")
+        return
     }
+    log.Printf("Total campaigns in database: %d", totalItems)
 
-    totalItems := len(campaignList)
     totalPages := (totalItems + paginationParams.PerPage - 1) / paginationParams.PerPage
+    log.Printf("Total pages: %d", totalPages)
 
-    if paginationParams.Page > totalPages {
+    if paginationParams.Page > totalPages && totalPages > 0 {
+        log.Printf("Requested page %d exceeds total pages %d", paginationParams.Page, totalPages)
         util.RespondWithError(w, http.StatusNotFound, "Page not found")
         return
     }
 
-    start := (paginationParams.Page - 1) * paginationParams.PerPage
-    end := start + paginationParams.PerPage
-    if end > totalItems {
-        end = totalItems
+    offset := (paginationParams.Page - 1) * paginationParams.PerPage
+
+    query := `
+        SELECT campaignid, campaignname, referenceartists, trello_link, spotify_link, launchdate, promoted_artist
+        FROM campaigns
+        ORDER BY campaignid
+        LIMIT $1 OFFSET $2
+    `
+    log.Printf("Executing query: %s", query)
+    rows, err := db.DB.Query(query, paginationParams.PerPage, offset)
+    if err != nil {
+        log.Printf("Error querying campaigns: %v", err)
+        util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving campaigns")
+        return
+    }
+    defer rows.Close()
+
+    var campaigns []models.Campaign
+    for rows.Next() {
+        var c models.Campaign
+        err := rows.Scan(
+            &c.ID,
+            &c.CampaignName,
+            &c.ReferenceArtists,
+            &c.TrelloLink,
+            &c.SpotifyLink,
+            &c.LaunchDate,
+            &c.PromotedArtist,
+        )
+        if err != nil {
+            log.Printf("Error scanning campaign row: %v", err)
+            util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving campaigns")
+            return
+        }
+        campaigns = append(campaigns, c)
     }
 
-    paginatedList := campaignList[start:end]
+    if err = rows.Err(); err != nil {
+        log.Printf("Error after scanning all rows: %v", err)
+        util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving campaigns")
+        return
+    }
+
+    log.Printf("Number of campaigns retrieved: %d", len(campaigns))
 
     response := map[string]interface{}{
-        "data":        paginatedList,
+        "data":        campaigns,
         "page":        paginationParams.Page,
         "per_page":    paginationParams.PerPage,
         "total_items": totalItems,
         "total_pages": totalPages,
     }
 
+    log.Printf("Response prepared: %+v", response)
     util.RespondWithJSON(w, http.StatusOK, response)
+    log.Println("GetCampaigns function completed")
 }
 
 func GetCampaign(w http.ResponseWriter, r *http.Request) {
