@@ -2,17 +2,18 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"sync"
 
+	"github.com/alanowatson/LeadGenAPI/internal/db"
 	"github.com/alanowatson/LeadGenAPI/internal/errors"
 	"github.com/alanowatson/LeadGenAPI/internal/models"
+	"github.com/alanowatson/LeadGenAPI/internal/pagination"
 	"github.com/alanowatson/LeadGenAPI/internal/validation"
 	"github.com/alanowatson/LeadGenAPI/pkg/util"
 	"github.com/gorilla/mux"
-    "github.com/alanowatson/LeadGenAPI/internal/pagination"
-
 )
 
 var (
@@ -22,34 +23,76 @@ var (
 )
 
 func GetPlaylists(w http.ResponseWriter, r *http.Request) {
+    log.Println("GetPlaylists function called")
+
     paginationParams := pagination.GetPaginationParams(r)
+    log.Printf("Pagination params: page=%d, per_page=%d", paginationParams.Page, paginationParams.PerPage)
 
-    playlistMutex.RLock()
-    defer playlistMutex.RUnlock()
-
-    playlistList := make([]models.Playlist, 0, len(playlists))
-    for _, playlist := range playlists {
-        playlistList = append(playlistList, playlist)
+    var totalItems int
+    err := db.DB.QueryRow("SELECT COUNT(*) FROM playlists").Scan(&totalItems)
+    if err != nil {
+        log.Printf("Error getting total count: %v", err)
+        util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlists")
+        return
     }
+    log.Printf("Total playlists in database: %d", totalItems)
 
-    totalItems := len(playlistList)
     totalPages := (totalItems + paginationParams.PerPage - 1) / paginationParams.PerPage
+    log.Printf("Total pages: %d", totalPages)
 
-    if paginationParams.Page > totalPages {
+    if paginationParams.Page > totalPages && totalPages > 0 {
+        log.Printf("Requested page %d exceeds total pages %d", paginationParams.Page, totalPages)
         util.RespondWithError(w, http.StatusNotFound, "Page not found")
         return
     }
 
-    start := (paginationParams.Page - 1) * paginationParams.PerPage
-    end := start + paginationParams.PerPage
-    if end > totalItems {
-        end = totalItems
+    offset := (paginationParams.Page - 1) * paginationParams.PerPage
+
+    query := `
+        SELECT playlistid, playlisterid, playlistspotifyid, numberoffollowers, current_playlist_name, lastfollowercountdate, last_exposed
+        FROM playlists
+        ORDER BY playlistid
+        LIMIT $1 OFFSET $2
+    `
+    log.Printf("Executing query: %s", query)
+    rows, err := db.DB.Query(query, paginationParams.PerPage, offset)
+    if err != nil {
+        log.Printf("Error querying playlists: %v", err)
+        util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlists")
+        return
+    }
+    defer rows.Close()
+
+       var playlists []models.Playlist
+    for rows.Next() {
+        var p models.Playlist
+        err := rows.Scan(
+            &p.ID,
+            &p.PlaylisterId,
+            &p.PlaylistSpotifyId,
+            &p.NumberOfFollowers,
+            &p.CurrentPlaylistName,
+            &p.LastFollowerCountDate,
+            &p.LastExposed,
+        )
+        if err != nil {
+            log.Printf("Error scanning playlist row: %v", err)
+            util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlists")
+            return
+        }
+        playlists = append(playlists, p)
     }
 
-    paginatedList := playlistList[start:end]
+    if err = rows.Err(); err != nil {
+        log.Printf("Error after scanning all rows: %v", err)
+        util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlists")
+        return
+    }
+
+    log.Printf("Number of playlists retrieved: %d", len(playlists))
 
     response := map[string]interface{}{
-        "data":        paginatedList,
+        "data":        playlists,
         "page":        paginationParams.Page,
         "per_page":    paginationParams.PerPage,
         "total_items": totalItems,
@@ -57,6 +100,7 @@ func GetPlaylists(w http.ResponseWriter, r *http.Request) {
     }
 
     util.RespondWithJSON(w, http.StatusOK, response)
+    log.Println("GetPlaylists function completed")
 }
 
 func GetPlaylist(w http.ResponseWriter, r *http.Request) {
