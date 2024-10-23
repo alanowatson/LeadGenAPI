@@ -23,61 +23,90 @@ var (
 )
 
 func GetPlaylisters(w http.ResponseWriter, r *http.Request) {
-    log.Println("GetPlaylisters function called")
+   log.Println("GetPlaylisters function called")
 
-    paginationParams := pagination.GetPaginationParams(r)
+   paginationParams := pagination.GetPaginationParams(r)
+   log.Printf("Pagination params: page=%d, per_page=%d", paginationParams.Page, paginationParams.PerPage)
 
-    var playlisters []models.Playlister
-    var totalItems int
+   var totalItems int
+   err := db.DB.QueryRow("SELECT COUNT(*) FROM playlisters").Scan(&totalItems)
+   if err != nil {
+       log.Printf("Error getting total count: %v", err)
+       util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlisters")
+       return
+   }
+   log.Printf("Total playlisters in database: %d", totalItems)
 
-    // Query to get total count
-    err := db.DB.QueryRow("SELECT COUNT(*) FROM playlisters").Scan(&totalItems)
-    if err != nil {
-        log.Printf("Error getting total count: %v", err)
-        util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlisters")
-        return
-    }
-    log.Printf("Total playlisters in database: %d", totalItems)
+   totalPages := (totalItems + paginationParams.PerPage - 1) / paginationParams.PerPage
+   log.Printf("Total pages: %d", totalPages)
 
-    // Query to get paginated results
-    offset := (paginationParams.Page - 1) * paginationParams.PerPage
-    rows, err := db.DB.Query("SELECT playlisterid, spotifyuserid, curatorfullname, email FROM playlisters ORDER BY playlisterid LIMIT $1 OFFSET $2",
-        paginationParams.PerPage, offset)
-    if err != nil {
-        log.Printf("Error querying playlisters: %v", err)
-        util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlisters")
-        return
-    }
-    defer rows.Close()
+   if paginationParams.Page > totalPages && totalPages > 0 {
+       log.Printf("Requested page %d exceeds total pages %d", paginationParams.Page, totalPages)
+       util.RespondWithError(w, http.StatusNotFound, "Page not found")
+       return
+   }
 
-    for rows.Next() {
-        var p models.Playlister
-        if err := rows.Scan(&p.ID, &p.SpotifyUserID, &p.CuratorFullName, &p.Email); err != nil {
-            log.Printf("Error scanning playlister row: %v", err)
-            util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlisters")
-            return
-        }
-        playlisters = append(playlisters, p)
-    }
+   offset := (paginationParams.Page - 1) * paginationParams.PerPage
 
-    if err = rows.Err(); err != nil {
-        log.Printf("Error after scanning all rows: %v", err)
-        util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlisters")
-        return
-    }
+   query := `
+       SELECT playlisterid, spotifyuserid, curatorfullname, email,
+              instagram, facebook, whatsapp, lastcontacted,
+              preferredlanguage, followupstatus
+       FROM playlisters
+       ORDER BY playlisterid
+       LIMIT $1 OFFSET $2
+   `
+   log.Printf("Executing query: %s", query)
+   rows, err := db.DB.Query(query, paginationParams.PerPage, offset)
+   if err != nil {
+       log.Printf("Error querying playlisters: %v", err)
+       util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlisters")
+       return
+   }
+   defer rows.Close()
 
-    totalPages := (totalItems + paginationParams.PerPage - 1) / paginationParams.PerPage
+   var playlisters []models.Playlister
+   for rows.Next() {
+       var p models.Playlister
+       err := rows.Scan(
+           &p.ID,
+           &p.SpotifyUserID,
+           &p.CuratorFullName,
+           &p.Email,
+           &p.Instagram,
+           &p.Facebook,
+           &p.Whatsapp,
+           &p.LastContacted,
+           &p.PreferredLanguage,
+           &p.FollowupStatus,
+       )
+       if err != nil {
+           log.Printf("Error scanning playlister row: %v", err)
+           util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlisters")
+           return
+       }
+       playlisters = append(playlisters, p)
+   }
 
-    response := map[string]interface{}{
-        "data":        playlisters,
-        "page":        paginationParams.Page,
-        "per_page":    paginationParams.PerPage,
-        "total_items": totalItems,
-        "total_pages": totalPages,
-    }
+   if err = rows.Err(); err != nil {
+       log.Printf("Error after scanning all rows: %v", err)
+       util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlisters")
+       return
+   }
 
-    log.Printf("Responding with %d playlisters", len(playlisters))
-    util.RespondWithJSON(w, http.StatusOK, response)
+   log.Printf("Number of playlisters retrieved: %d", len(playlisters))
+
+   response := map[string]interface{}{
+       "data":        playlisters,
+       "page":        paginationParams.Page,
+       "per_page":    paginationParams.PerPage,
+       "total_items": totalItems,
+       "total_pages": totalPages,
+   }
+
+   log.Printf("Response prepared with %d items", len(playlisters))
+   util.RespondWithJSON(w, http.StatusOK, response)
+   log.Println("GetPlaylisters function completed")
 }
 
 func CreatePlaylister(w http.ResponseWriter, r *http.Request) {
