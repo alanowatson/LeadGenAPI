@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -109,6 +110,56 @@ func GetPlaylisters(w http.ResponseWriter, r *http.Request) {
    log.Println("GetPlaylisters function completed")
 }
 
+func GetPlaylister(w http.ResponseWriter, r *http.Request) {
+    log.Println("GetPlaylister function called")
+
+    vars := mux.Vars(r)
+    id, err := strconv.Atoi(vars["id"])
+    if err != nil {
+        log.Printf("Invalid playlister ID: %v", err)
+        util.RespondWithError(w, http.StatusBadRequest, "Invalid playlister ID")
+        return
+    }
+    log.Printf("Looking up playlister with ID: %d", id)
+
+    query := `
+        SELECT playlisterid, spotifyuserid, curatorfullname, email,
+               instagram, facebook, whatsapp, lastcontacted,
+               preferredlanguage, followupstatus
+        FROM playlisters
+        WHERE playlisterid = $1
+    `
+
+    var p models.Playlister
+    err = db.DB.QueryRow(query, id).Scan(
+        &p.ID,
+        &p.SpotifyUserID,
+        &p.CuratorFullName,
+        &p.Email,
+        &p.Instagram,
+        &p.Facebook,
+        &p.Whatsapp,
+        &p.LastContacted,
+        &p.PreferredLanguage,
+        &p.FollowupStatus,
+    )
+
+    if err != nil {
+        if err == sql.ErrNoRows {
+            log.Printf("Playlister not found with ID: %d", id)
+            util.RespondWithError(w, http.StatusNotFound, "Playlister not found")
+            return
+        }
+        log.Printf("Error querying playlister: %v", err)
+        util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlister")
+        return
+    }
+
+    log.Printf("Successfully retrieved playlister with ID: %d", id)
+    util.RespondWithJSON(w, http.StatusOK, p)
+    log.Println("GetPlaylister function completed")
+}
+
 func CreatePlaylister(w http.ResponseWriter, r *http.Request) {
     var playlister models.Playlister
     decoder := json.NewDecoder(r.Body)
@@ -130,26 +181,6 @@ func CreatePlaylister(w http.ResponseWriter, r *http.Request) {
     playlisterMutex.Unlock()
 
     util.RespondWithJSON(w, http.StatusCreated, playlister)
-}
-
-func GetPlaylister(w http.ResponseWriter, r *http.Request) {
-    vars := mux.Vars(r)
-    id, err := strconv.Atoi(vars["id"])
-    if err != nil {
-        util.RespondWithError(w, http.StatusBadRequest, "Invalid playlister ID")
-        return
-    }
-
-    playlisterMutex.RLock()
-    playlister, found := playlisters[id]
-    playlisterMutex.RUnlock()
-
-    if !found {
-        util.RespondWithError(w, http.StatusNotFound, "Playlister not found")
-        return
-    }
-
-    util.RespondWithJSON(w, http.StatusOK, playlister)
 }
 
 func UpdatePlaylister(w http.ResponseWriter, r *http.Request) {

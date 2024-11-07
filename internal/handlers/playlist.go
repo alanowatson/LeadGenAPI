@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+    "database/sql"
 	"log"
 	"net/http"
 	"strconv"
@@ -104,23 +105,50 @@ func GetPlaylists(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetPlaylist(w http.ResponseWriter, r *http.Request) {
+    log.Println("GetPlaylist function called")
+
     vars := mux.Vars(r)
     id, err := strconv.Atoi(vars["id"])
     if err != nil {
+        log.Printf("Invalid playlist ID: %v", err)
         util.RespondWithError(w, http.StatusBadRequest, "Invalid playlist ID")
         return
     }
 
-    playlistMutex.RLock()
-    playlist, found := playlists[id]
-    playlistMutex.RUnlock()
+    log.Printf("Looking up playlist with ID: %d", id)
 
-    if !found {
-        util.RespondWithError(w, http.StatusNotFound, "Playlist not found")
+    query := `
+        SELECT playlistid, playlisterid, playlistspotifyid, numberoffollowers,
+               current_playlist_name, lastfollowercountdate, last_exposed
+        FROM playlists
+        WHERE playlistid = $1
+    `
+
+    var p models.Playlist
+    err = db.DB.QueryRow(query, id).Scan(
+        &p.ID,
+        &p.PlaylisterId,
+        &p.PlaylistSpotifyId,
+        &p.NumberOfFollowers,
+        &p.CurrentPlaylistName,
+        &p.LastFollowerCountDate,
+        &p.LastExposed,
+    )
+
+    if err != nil {
+        if err == sql.ErrNoRows {
+            log.Printf("Playlist not found with ID: %d", id)
+            util.RespondWithError(w, http.StatusNotFound, "Playlist not found")
+            return
+        }
+        log.Printf("Error querying playlist: %v", err)
+        util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlist")
         return
     }
 
-    util.RespondWithJSON(w, http.StatusOK, playlist)
+    log.Printf("Successfully retrieved playlist with ID: %d", id)
+    util.RespondWithJSON(w, http.StatusOK, p)
+    log.Println("GetPlaylist function completed")
 }
 
 func CreatePlaylist(w http.ResponseWriter, r *http.Request) {

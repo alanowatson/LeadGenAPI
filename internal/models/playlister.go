@@ -1,8 +1,8 @@
 package models
 
 import (
-    "database/sql"
-    "encoding/json"
+	"database/sql"
+	"encoding/json"
 )
 
 type Playlister struct {

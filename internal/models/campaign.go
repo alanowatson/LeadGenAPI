@@ -27,11 +27,11 @@ func (c Campaign) MarshalJSON() ([]byte, error) {
         PromotedArtist   string `json:"promoted_artist"`
     }{
         ID:               c.ID,
-        CampaignName:     c.CampaignName.String,
-        ReferenceArtists: c.ReferenceArtists.String,
-        TrelloLink:       c.TrelloLink.String,
-        SpotifyLink:      c.SpotifyLink.String,
-        LaunchDate:       c.LaunchDate.String,
-        PromotedArtist:   c.PromotedArtist.String,
+        CampaignName:     stringOrEmpty(c.CampaignName),
+        ReferenceArtists: stringOrEmpty(c.ReferenceArtists),
+        TrelloLink:       stringOrEmpty(c.TrelloLink),
+        SpotifyLink:      stringOrEmpty(c.SpotifyLink),
+        LaunchDate:       stringOrEmpty(c.LaunchDate),
+        PromotedArtist:   stringOrEmpty(c.PromotedArtist),
     })
 }

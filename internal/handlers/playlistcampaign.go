@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -108,22 +109,57 @@ func GetPlaylistCampaigns(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetPlaylistCampaign(w http.ResponseWriter, r *http.Request) {
+    log.Println("GetPlaylistCampaign function called")
+
     vars := mux.Vars(r)
-    playlistID, _ := strconv.Atoi(vars["playlistId"])
-    campaignID, _ := strconv.Atoi(vars["campaignId"])
-
-    key := fmt.Sprintf("%d_%d", playlistID, campaignID)
-
-    playlistCampaignMutex.RLock()
-    pc, found := playlistCampaigns[key]
-    playlistCampaignMutex.RUnlock()
-
-    if !found {
-        util.RespondWithError(w, http.StatusNotFound, "PlaylistCampaign not found")
+    playlistID, err := strconv.Atoi(vars["playlistId"])
+    if err != nil {
+        log.Printf("Invalid playlist ID: %v", err)
+        util.RespondWithError(w, http.StatusBadRequest, "Invalid playlist ID")
         return
     }
 
+    campaignID, err := strconv.Atoi(vars["campaignId"])
+    if err != nil {
+        log.Printf("Invalid campaign ID: %v", err)
+        util.RespondWithError(w, http.StatusBadRequest, "Invalid campaign ID")
+        return
+    }
+
+    log.Printf("Looking up playlist campaign with PlaylistID: %d and CampaignID: %d", playlistID, campaignID)
+
+    query := `
+        SELECT playlistid, campaignid, playlisterid, referenceartists,
+               placementstatus, numberofmessages, purchased
+        FROM playlistcampaigns
+        WHERE playlistid = $1 AND campaignid = $2
+    `
+
+    var pc models.PlaylistCampaign
+    err = db.DB.QueryRow(query, playlistID, campaignID).Scan(
+        &pc.PlaylistID,
+        &pc.CampaignID,
+        &pc.PlaylisterId,
+        &pc.ReferenceArtists,
+        &pc.PlacementStatus,
+        &pc.NumberOfMessages,
+        &pc.Purchased,
+    )
+
+    if err != nil {
+        if err == sql.ErrNoRows {
+            log.Printf("PlaylistCampaign not found with PlaylistID: %d and CampaignID: %d", playlistID, campaignID)
+            util.RespondWithError(w, http.StatusNotFound, "PlaylistCampaign not found")
+            return
+        }
+        log.Printf("Error querying playlist campaign: %v", err)
+        util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving playlist campaign")
+        return
+    }
+
+    log.Printf("Successfully retrieved playlist campaign with PlaylistID: %d and CampaignID: %d", playlistID, campaignID)
     util.RespondWithJSON(w, http.StatusOK, pc)
+    log.Println("GetPlaylistCampaign function completed")
 }
 
 func CreatePlaylistCampaign(w http.ResponseWriter, r *http.Request) {

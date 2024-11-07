@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+    "database/sql"
 
 	"github.com/alanowatson/LeadGenAPI/internal/db"
 	"github.com/alanowatson/LeadGenAPI/internal/errors"
@@ -106,23 +107,50 @@ func GetCampaigns(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetCampaign(w http.ResponseWriter, r *http.Request) {
+    log.Println("GetCampaign function called")
+
     vars := mux.Vars(r)
     id, err := strconv.Atoi(vars["id"])
     if err != nil {
+        log.Printf("Invalid campaign ID: %v", err)
         util.RespondWithError(w, http.StatusBadRequest, "Invalid campaign ID")
         return
     }
 
-    campaignMutex.RLock()
-    campaign, found := campaigns[id]
-    campaignMutex.RUnlock()
+    log.Printf("Looking up campaign with ID: %d", id)
 
-    if !found {
-        util.RespondWithError(w, http.StatusNotFound, "Campaign not found")
+    query := `
+        SELECT campaignid, campaignname, referenceartists, trello_link, spotify_link,
+               launchdate, promoted_artist
+        FROM campaigns
+        WHERE campaignid = $1
+    `
+
+    var c models.Campaign
+    err = db.DB.QueryRow(query, id).Scan(
+        &c.ID,
+        &c.CampaignName,
+        &c.ReferenceArtists,
+        &c.TrelloLink,
+        &c.SpotifyLink,
+        &c.LaunchDate,
+        &c.PromotedArtist,
+    )
+
+    if err != nil {
+        if err == sql.ErrNoRows {
+            log.Printf("Campaign not found with ID: %d", id)
+            util.RespondWithError(w, http.StatusNotFound, "Campaign not found")
+            return
+        }
+        log.Printf("Error querying campaign: %v", err)
+        util.RespondWithError(w, http.StatusInternalServerError, "Error retrieving campaign")
         return
     }
 
-    util.RespondWithJSON(w, http.StatusOK, campaign)
+    log.Printf("Successfully retrieved campaign with ID: %d", id)
+    util.RespondWithJSON(w, http.StatusOK, c)
+    log.Println("GetCampaign function completed")
 }
 
 func CreateCampaign(w http.ResponseWriter, r *http.Request) {

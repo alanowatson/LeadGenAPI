@@ -21,7 +21,6 @@ func Login(w http.ResponseWriter, r *http.Request) {
     }
     defer r.Body.Close()
 
-    // In a real application, you would validate the username and password against a database
     if req.Username != "admin" || req.Password != "password" {
         util.RespondWithError(w, http.StatusUnauthorized, "Invalid credentials")
         return
